@@ -29,7 +29,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ManageAccounts
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -56,7 +59,13 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 @Composable
-fun CameraScreen(session: PhotoSession, onArchive: () -> Unit) {
+fun CameraScreen(
+    session: PhotoSession,
+    user: AppUser,
+    onArchive: () -> Unit,
+    onUsers: () -> Unit,
+    onLogout: () -> Unit
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -156,13 +165,31 @@ fun CameraScreen(session: PhotoSession, onArchive: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "Automatic Foto Report",
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f)
-            )
+            Column(Modifier.weight(1f)) {
+                Text("Automatic Foto Report", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                Text(user.name, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+            }
             CounterPill(session.photos.size)
+            Box {
+                var menu by remember { mutableStateOf(false) }
+                IconButton(onClick = { menu = true }) {
+                    Icon(Icons.Filled.MoreVert, "Menu", tint = Color.White)
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (user.isAdmin) {
+                        DropdownMenuItem(
+                            text = { Text("Gestione utenti") },
+                            leadingIcon = { Icon(Icons.Filled.ManageAccounts, null) },
+                            onClick = { menu = false; onUsers() }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("Esci") },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.Logout, null) },
+                        onClick = { menu = false; onLogout() }
+                    )
+                }
+            }
         }
 
         // ---------- Barra inferiore ----------
