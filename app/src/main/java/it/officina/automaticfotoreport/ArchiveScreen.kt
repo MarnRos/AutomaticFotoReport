@@ -1,5 +1,6 @@
 package it.officina.automaticfotoreport
 
+import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,6 +12,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
@@ -54,11 +58,16 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
     var manualShare by remember { mutableStateOf(settings.lastShare) }
     var currentShare by remember { mutableStateOf("") }
     var path by remember { mutableStateOf("") }
-    var folders by remember { mutableStateOf<List<String>>(emptyList()) }
+    var entries by remember { mutableStateOf<List<RemoteEntry>>(emptyList()) }
 
-    var zipName by remember {
-        mutableStateOf("Quadro_" + SimpleDateFormat("yyyyMMdd_HHmm", Locale.ITALY).format(Date()))
-    }
+    // Nome file: "AAAA-MM-GG_<nome>.zip" (la data di archiviazione viene aggiunta in automatico)
+    val datePrefix = remember { SimpleDateFormat("yyyy-MM-dd", Locale.ITALY).format(Date()) }
+    var fileBase by remember { mutableStateOf("") }
+    var overwriteAsk by remember { mutableStateOf<String?>(null) }      // file da confermare
+    var pendingName by remember { mutableStateOf<String?>(null) }       // file scelto
+    var pendingOverwrite by remember { mutableStateOf(false) }
+    var askVoice by remember { mutableStateOf(false) }
+    var recordVoice by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf<Float?>(null) }
     var showNewFolder by remember { mutableStateOf(false) }
 
@@ -100,7 +109,7 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
         }
     }
 
-    fun refresh() = run { folders = repo.listDirs(path) }
+    fun refresh() = run { entries = repo.listEntries(path) }
 
     fun openShare(name: String) = run {
         repo.openShare(name)
@@ -108,7 +117,7 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
         settings = settings.copy(lastShare = name)
         // riapre l'ultima cartella usata, se esiste ancora
         path = if (settings.lastPath.isNotEmpty() && repo.folderExists(settings.lastPath)) settings.lastPath else ""
-        folders = repo.listDirs(path)
+        entries = repo.listEntries(path)
         step = Step.FOLDER
     }
 
@@ -245,24 +254,48 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
                         }
                     }
                     LazyColumn(Modifier.weight(1f)) {
-                        if (folders.isEmpty() && !busy) {
-                            item { Text("(nessuna sottocartella)", Modifier.padding(16.dp)) }
+                        if (entries.isEmpty() && !busy) {
+                            item { Text("(cartella vuota)", Modifier.padding(16.dp)) }
                         }
-                        items(folders) { name ->
+                        items(entries) { e ->
+                            val info: (@Composable () -> Unit)? = if (e.isDir) null else {
+                                {
+                                    Text(
+                                        Formatter.formatShortFileSize(context, e.size) + " · " +
+                                            SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.ITALY).format(Date(e.modified))
+                                    )
+                                }
+                            }
                             ListItem(
-                                headlineContent = { Text(name) },
-                                leadingContent = { Icon(Icons.Default.Folder, null) },
+                                headlineContent = { Text(e.name) },
+                                supportingContent = info,
+                                leadingContent = {
+                                    Icon(
+                                        when {
+                                            e.isDir -> Icons.Default.Folder
+                                            e.name.endsWith(".zip", true) -> Icons.Default.FolderZip
+                                            else -> Icons.AutoMirrored.Filled.InsertDriveFile
+                                        }, null
+                                    )
+                                },
                                 modifier = Modifier.clickable(enabled = !busy) {
-                                    path = SmbRepository.join(path, name); refresh()
+                                    if (e.isDir) { path = SmbRepository.join(path, e.name); refresh() }
+                                    else overwriteAsk = e.name   // tocca un file per sovrascriverlo
                                 }
                             )
                             HorizontalDivider()
                         }
                     }
 
+                    Text(
+                        "Tocca un file per sovrascriverlo, oppure scrivi un nuovo nome:",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
                     OutlinedTextField(
-                        value = zipName, onValueChange = { zipName = it },
-                        label = { Text("Nome archivio") }, singleLine = true,
+                        value = fileBase, onValueChange = { fileBase = it },
+                        label = { Text("Nome file") }, singleLine = true,
+                        prefix = { Text("${datePrefix}_") },
                         suffix = { Text(".zip") },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -270,32 +303,87 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
                         LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                     }
                     Button(
-                        enabled = !busy && ZipUtil.sanitizeName(zipName).isNotEmpty() && session.photos.isNotEmpty(),
+                        enabled = !busy && ZipUtil.sanitizeName(fileBase).isNotEmpty() && session.photos.isNotEmpty(),
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         onClick = {
-                            run {
-                                val base = ZipUtil.sanitizeName(zipName)
-                                val remote = SmbRepository.join(path, "$base.zip")
-                                if (repo.fileExists(remote)) error("Esiste già un archivio \"$base.zip\" in questa cartella")
-                                val tmp = File(context.cacheDir, "$base.zip")
-                                try {
-                                    withContext(Dispatchers.IO) { ZipUtil.createZip(session.photos.toList(), base, tmp) }
-                                    progress = 0f
-                                    repo.upload(tmp, remote) { p -> progress = p }
-                                } finally {
-                                    tmp.delete(); progress = null
-                                }
-                                settings = settings.copy(lastShare = currentShare, lastPath = path)
-                                settings.save(context)
-                                val n = session.photos.size
-                                session.clear()
-                                success = "$n foto salvate in\n\\\\${settings.host}\\$currentShare\\$remote"
-                            }
+                            val name = "${datePrefix}_${ZipUtil.sanitizeName(fileBase)}.zip"
+                            val exists = entries.any { !it.isDir && it.name.equals(name, ignoreCase = true) }
+                            if (exists) overwriteAsk = name
+                            else { pendingName = name; pendingOverwrite = false; askVoice = true }
                         }
                     ) { Text("Salva qui") }
                 }
             }
         }
+    }
+
+    fun doSave(voice: File?) {
+        val name = pendingName ?: return
+        val overwrite = pendingOverwrite
+        run {
+            val remote = SmbRepository.join(path, name)
+            if (!overwrite && repo.fileExists(remote)) error("Esiste già \"$name\" in questa cartella")
+            val base = name.removeSuffix(".zip").removeSuffix(".ZIP")
+            val tmp = File(context.cacheDir, "archivio.zip")
+            try {
+                withContext(Dispatchers.IO) { ZipUtil.createZip(session.photos.toList(), base, tmp, voice) }
+                progress = 0f
+                repo.upload(tmp, remote, overwrite) { p -> progress = p }
+            } finally {
+                tmp.delete(); progress = null
+            }
+            voice?.delete()
+            settings = settings.copy(lastShare = currentShare, lastPath = path)
+            settings.save(context)
+            val n = session.photos.size
+            session.clear()
+            pendingName = null
+            success = "$n foto" + (if (voice != null) " e messaggio vocale" else "") +
+                " salvate in\n\\\\${settings.host}\\$currentShare\\$remote"
+        }
+    }
+
+    overwriteAsk?.let { name ->
+        AlertDialog(
+            onDismissRequest = { overwriteAsk = null },
+            title = { Text("Sovrascrivere il file?") },
+            text = { Text("Il file \"$name\" verrà sostituito con il nuovo archivio. Il contenuto attuale andrà perso.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        overwriteAsk = null
+                        pendingName = name
+                        pendingOverwrite = true
+                        askVoice = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Sovrascrivi") }
+            },
+            dismissButton = { TextButton(onClick = { overwriteAsk = null }) { Text("Annulla") } }
+        )
+    }
+
+    if (askVoice) {
+        AlertDialog(
+            onDismissRequest = { askVoice = false },
+            title = { Text("Messaggio vocale") },
+            text = { Text("Vuoi aggiungere un messaggio vocale all'archivio?") },
+            confirmButton = {
+                Button(onClick = { askVoice = false; recordVoice = true }) {
+                    Icon(Icons.Default.Mic, null); Spacer(Modifier.width(6.dp)); Text("Sì, registra")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { askVoice = false; doSave(null) }) { Text("No, salva") }
+            }
+        )
+    }
+
+    if (recordVoice) {
+        VoiceMessageDialog(
+            onConfirm = { file -> recordVoice = false; doSave(file) },
+            onCancel = { recordVoice = false; askVoice = true }
+        )
     }
 
     if (showScan) {
@@ -352,7 +440,7 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
                         val newPath = SmbRepository.join(path, ZipUtil.sanitizeName(name))
                         repo.mkdir(newPath)
                         path = newPath
-                        folders = repo.listDirs(path)
+                        entries = repo.listEntries(path)
                     }
                 }) { Text("Crea") }
             },

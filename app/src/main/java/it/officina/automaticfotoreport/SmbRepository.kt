@@ -21,6 +21,8 @@ import java.io.File
 import java.util.EnumSet
 import java.util.concurrent.TimeUnit
 
+data class RemoteEntry(val name: String, val isDir: Boolean, val size: Long, val modified: Long)
+
 data class SmbSettings(
     val host: String = "",
     val domain: String = "",
@@ -98,14 +100,22 @@ class SmbRepository {
         share = ses.connectShare(name) as DiskShare
     }
 
-    suspend fun listDirs(path: String): List<String> = withContext(Dispatchers.IO) {
+    /** Cartelle e file contenuti in [path]: prima le cartelle, poi i file, in ordine alfabetico. */
+    suspend fun listEntries(path: String): List<RemoteEntry> = withContext(Dispatchers.IO) {
         val sh = share ?: error("Nessuna condivisione aperta")
         sh.list(path)
             .filter { it.fileName != "." && it.fileName != ".." }
-            .filter { EnumWithValue.EnumUtils.isSet(it.fileAttributes, FileAttributes.FILE_ATTRIBUTE_DIRECTORY) }
             .filter { !EnumWithValue.EnumUtils.isSet(it.fileAttributes, FileAttributes.FILE_ATTRIBUTE_HIDDEN) }
-            .map { it.fileName }
-            .sortedBy { it.lowercase() }
+            .filter { !EnumWithValue.EnumUtils.isSet(it.fileAttributes, FileAttributes.FILE_ATTRIBUTE_SYSTEM) }
+            .map {
+                RemoteEntry(
+                    name = it.fileName,
+                    isDir = EnumWithValue.EnumUtils.isSet(it.fileAttributes, FileAttributes.FILE_ATTRIBUTE_DIRECTORY),
+                    size = it.endOfFile,
+                    modified = it.lastWriteTime.toEpochMillis()
+                )
+            }
+            .sortedWith(compareBy<RemoteEntry>({ !it.isDir }, { it.name.lowercase() }))
     }
 
     suspend fun folderExists(path: String): Boolean = withContext(Dispatchers.IO) {
@@ -120,7 +130,7 @@ class SmbRepository {
         share?.fileExists(path) ?: false
     }
 
-    suspend fun upload(local: File, remotePath: String, onProgress: (Float) -> Unit) =
+    suspend fun upload(local: File, remotePath: String, overwrite: Boolean, onProgress: (Float) -> Unit) =
         withContext(Dispatchers.IO) {
             val sh = share ?: error("Nessuna condivisione aperta")
             val total = local.length().coerceAtLeast(1)
@@ -129,7 +139,7 @@ class SmbRepository {
                 EnumSet.of(AccessMask.GENERIC_WRITE),
                 EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL),
                 SMB2ShareAccess.ALL,
-                SMB2CreateDisposition.FILE_CREATE,          // fallisce se il file esiste già
+                if (overwrite) SMB2CreateDisposition.FILE_OVERWRITE_IF else SMB2CreateDisposition.FILE_CREATE,
                 EnumSet.noneOf(SMB2CreateOptions::class.java)
             ).use { remote ->
                 remote.outputStream.use { out ->

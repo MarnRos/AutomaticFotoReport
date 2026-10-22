@@ -17,13 +17,18 @@ object ZipUtil {
     }
 
     /** Crea lo zip con le foto rinominate in sequenza (nome_001.jpg, nome_002.jpg, ...). */
-    fun createZip(photos: List<File>, baseName: String, outFile: File): File {
+    fun createZip(photos: List<File>, baseName: String, outFile: File, voiceMessage: File? = null): File {
         ZipOutputStream(outFile.outputStream().buffered()).use { zos ->
             zos.setLevel(Deflater.BEST_SPEED) // i JPEG sono già compressi
             photos.forEachIndexed { i, f ->
                 val entryName = "%s_%03d.jpg".format(baseName, i + 1)
                 zos.putNextEntry(ZipEntry(entryName).apply { time = f.lastModified() })
                 f.inputStream().use { it.copyTo(zos) }
+                zos.closeEntry()
+            }
+            if (voiceMessage != null && voiceMessage.length() > 0) {
+                zos.putNextEntry(ZipEntry("messaggio_vocale.mp4").apply { time = voiceMessage.lastModified() })
+                voiceMessage.inputStream().use { it.copyTo(zos) }
                 zos.closeEntry()
             }
         }
