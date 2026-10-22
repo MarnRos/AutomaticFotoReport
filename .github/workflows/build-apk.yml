@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -31,7 +34,20 @@ jobs:
             exit 1
           fi
 
+      - name: Rinomina APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk AutomaticFotoReport.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: AutomaticFotoReport-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: AutomaticFotoReport.apk
+
+      - name: Pubblica nella pagina Releases
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ultima-versione
+          name: Automatic Foto Report (ultima versione)
+          body: APK compilato automaticamente dall'ultimo aggiornamento. Scarica AutomaticFotoReport.apk e installalo sul telefono.
+          files: AutomaticFotoReport.apk
+          make_latest: true
