@@ -13,49 +13,49 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-val BrandBlue = Color(0xFF2B5BE0)
-val BrandBlueDark = Color(0xFF1A3FA8)
+val BrandBlue = Color(0xFF00606B)   // petrolio
+val BrandBlueDark = Color(0xFF00393F)
 val BrandAmber = Color(0xFFF2A900)
 
 private val LightColors = lightColorScheme(
     primary = BrandBlue,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFDCE2FF),
-    onPrimaryContainer = Color(0xFF001257),
+    primaryContainer = Color(0xFFA9EDF5),
+    onPrimaryContainer = Color(0xFF001F23),
     secondary = Color(0xFF8A5A00),
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFFFDEA8),
     onSecondaryContainer = Color(0xFF2B1A00),
     tertiary = Color(0xFF006A60),
-    background = Color(0xFFF6F7FB),
+    background = Color(0xFFF4F8F8),
     onBackground = Color(0xFF1A1B21),
-    surface = Color(0xFFF6F7FB),
+    surface = Color(0xFFF4F8F8),
     onSurface = Color(0xFF1A1B21),
-    surfaceVariant = Color(0xFFE2E3EE),
+    surfaceVariant = Color(0xFFDAE4E5),
     onSurfaceVariant = Color(0xFF45464F),
     surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF0F1F7),
-    surfaceContainer = Color(0xFFEAEBF3),
-    surfaceContainerHigh = Color(0xFFE4E5EE),
-    surfaceContainerHighest = Color(0xFFDEDFE9),
+    surfaceContainerLow = Color(0xFFEEF3F3),
+    surfaceContainer = Color(0xFFE8EEEE),
+    surfaceContainerHigh = Color(0xFFE2E9E9),
+    surfaceContainerHighest = Color(0xFFDCE3E3),
     outline = Color(0xFF767680),
     outlineVariant = Color(0xFFC6C6D0),
     error = Color(0xFFBA1A1A),
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFB7C4FF),
-    onPrimary = Color(0xFF002388),
-    primaryContainer = Color(0xFF1E44C0),
-    onPrimaryContainer = Color(0xFFDCE2FF),
+    primary = Color(0xFF85D2DC),
+    onPrimary = Color(0xFF00363C),
+    primaryContainer = Color(0xFF004F57),
+    onPrimaryContainer = Color(0xFFA9EDF5),
     secondary = Color(0xFFFFBA3D),
     onSecondary = Color(0xFF482F00),
     secondaryContainer = Color(0xFF684400),
     onSecondaryContainer = Color(0xFFFFDEA8),
     tertiary = Color(0xFF53DBC9),
-    background = Color(0xFF111318),
+    background = Color(0xFF0F1415),
     onBackground = Color(0xFFE3E2E9),
-    surface = Color(0xFF111318),
+    surface = Color(0xFF0F1415),
     onSurface = Color(0xFFE3E2E9),
     surfaceVariant = Color(0xFF45464F),
     onSurfaceVariant = Color(0xFFC6C6D0),
