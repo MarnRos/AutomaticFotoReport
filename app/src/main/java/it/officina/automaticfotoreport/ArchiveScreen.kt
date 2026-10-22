@@ -5,10 +5,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderShared
@@ -21,7 +24,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,6 +61,34 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
     }
     var progress by remember { mutableStateOf<Float?>(null) }
     var showNewFolder by remember { mutableStateOf(false) }
+
+    // Ricerca PC in rete
+    var showScan by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(false) }
+    var scanProgress by remember { mutableStateOf(0f) }
+    var scanError by remember { mutableStateOf<String?>(null) }
+    val foundPcs = remember { mutableStateListOf<FoundPc>() }
+    var scanJob by remember { mutableStateOf<Job?>(null) }
+
+    fun startScan() {
+        scanJob?.cancel()
+        foundPcs.clear(); scanError = null; scanProgress = 0f; scanning = true
+        scanJob = scope.launch {
+            try {
+                NetworkScanner.scan(
+                    context,
+                    onProgress = { d, t -> scanProgress = d.toFloat() / t },
+                    onFound = { pc -> foundPcs.add(pc); foundPcs.sortBy { it.name ?: "~" + it.ip } }
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                scanError = e.message
+            } finally {
+                scanning = false
+            }
+        }
+    }
     var success by remember { mutableStateOf<String?>(null) }
 
     fun run(block: suspend () -> Unit) {
@@ -118,9 +151,16 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
             when (step) {
                 // ---------- 1. Connessione al PC ----------
                 Step.CONNECT -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        enabled = !busy,
+                        onClick = { showScan = true; startScan() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Search, null); Spacer(Modifier.width(6.dp)); Text("Cerca PC in rete")
+                    }
                     OutlinedTextField(
                         value = settings.host, onValueChange = { settings = settings.copy(host = it) },
-                        label = { Text("PC (nome o IP, es. 192.168.1.20)") }, singleLine = true,
+                        label = { Text("PC (IP, es. 192.168.1.20)") }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -256,6 +296,45 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
                 }
             }
         }
+    }
+
+    if (showScan) {
+        AlertDialog(
+            onDismissRequest = { scanJob?.cancel(); showScan = false },
+            title = { Text("PC con cartelle condivise") },
+            text = {
+                Column {
+                    if (scanning) {
+                        LinearProgressIndicator(progress = { scanProgress }, modifier = Modifier.fillMaxWidth())
+                        Text("Ricerca in corso… ${(scanProgress * 100).toInt()}%", Modifier.padding(vertical = 6.dp))
+                    }
+                    scanError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (!scanning && foundPcs.isEmpty() && scanError == null) {
+                        Text("Nessun PC trovato. Verifica di essere sulla Wi-Fi aziendale e che sul PC la condivisione file sia attiva.")
+                    }
+                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                        items(foundPcs) { pc ->
+                            ListItem(
+                                headlineContent = { Text(pc.name ?: "PC senza nome") },
+                                supportingContent = { Text(pc.ip) },
+                                leadingContent = { Icon(Icons.Default.Computer, null) },
+                                modifier = Modifier.clickable {
+                                    scanJob?.cancel()
+                                    settings = settings.copy(host = pc.ip)
+                                    showScan = false
+                                }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !scanning, onClick = { startScan() }) { Text("Ripeti") }
+            },
+            dismissButton = {
+                TextButton(onClick = { scanJob?.cancel(); showScan = false }) { Text("Chiudi") }
+            }
+        )
     }
 
     if (showNewFolder) {
