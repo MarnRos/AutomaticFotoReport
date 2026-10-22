@@ -15,7 +15,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            AppTheme {
                 Surface {
                     val session: PhotoSession = viewModel()
                     var archiving by rememberSaveable { mutableStateOf(false) }

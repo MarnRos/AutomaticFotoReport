@@ -3,6 +3,21 @@ package it.officina.automaticfotoreport
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Domain
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -129,74 +144,138 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
         }
     }
 
+    val photoCount = session.photos.size
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        when (step) {
-                            Step.CONNECT -> "Archivia ${session.photos.size} foto"
-                            Step.SHARES -> "Cartelle condivise su ${settings.host}"
-                            Step.FOLDER -> "\\\\${settings.host}\\$currentShare" + (if (path.isEmpty()) "" else "\\$path")
-                        },
-                        maxLines = 1
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Torna alla fotocamera")
+            Column(Modifier.background(MaterialTheme.colorScheme.background)) {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                    title = {
+                        Column {
+                            Text(
+                                when (step) {
+                                    Step.CONNECT -> "Archivia le foto"
+                                    Step.SHARES -> "Cartella condivisa"
+                                    Step.FOLDER -> "Destinazione"
+                                },
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                            Text(
+                                when (step) {
+                                    Step.CONNECT -> "$photoCount foto pronte da archiviare"
+                                    Step.SHARES -> settings.host
+                                    Step.FOLDER -> "\\\\${settings.host}\\$currentShare" + (if (path.isEmpty()) "" else "\\$path")
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Torna alla fotocamera")
+                        }
                     }
-                }
-            )
+                )
+                StepIndicator(step.ordinal, Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).height(2.dp))
+                else Spacer(Modifier.height(8.dp))
+            }
         }
     ) { pad ->
-        Column(Modifier.padding(pad).fillMaxSize().padding(16.dp)) {
+        Column(Modifier.padding(pad).fillMaxSize().padding(horizontal = 16.dp)) {
 
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = 8.dp))
             errorMsg?.let {
-                Text("Errore: $it", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.ErrorOutline, null); Spacer(Modifier.width(10.dp)); Text(it)
+                    }
+                }
             }
 
             when (step) {
                 // ---------- 1. Connessione al PC ----------
-                Step.CONNECT -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        enabled = !busy,
-                        onClick = { showScan = true; startScan() },
+                Step.CONNECT -> Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    ElevatedCard(
+                        onClick = { if (!busy) { showScan = true; startScan() } },
+                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Search, null); Spacer(Modifier.width(6.dp)); Text("Cerca PC in rete")
+                        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center
+                            ) { Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.onPrimary) }
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Cerca PC in rete", style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                Text("Trova i computer con cartelle condivise sulla Wi-Fi",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                            }
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
                     }
-                    OutlinedTextField(
-                        value = settings.host, onValueChange = { settings = settings.copy(host = it) },
-                        label = { Text("PC (IP, es. 192.168.1.20)") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = settings.domain, onValueChange = { settings = settings.copy(domain = it) },
-                        label = { Text("Dominio (facoltativo)") }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = settings.user, onValueChange = { settings = settings.copy(user = it) },
-                        label = { Text("Utente") }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = settings.password, onValueChange = { settings = settings.copy(password = it) },
-                        label = { Text("Password") }, singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(settings.rememberPassword, { settings = settings.copy(rememberPassword = it) })
-                        Text("Ricorda password")
+
+                    SectionCard("Computer") {
+                        OutlinedTextField(
+                            value = settings.host, onValueChange = { settings = settings.copy(host = it) },
+                            label = { Text("Indirizzo IP del PC") }, placeholder = { Text("es. 192.168.1.20") },
+                            leadingIcon = { Icon(Icons.Default.Computer, null) },
+                            singleLine = true, shape = MaterialTheme.shapes.medium,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
+
+                    SectionCard("Credenziali Windows") {
+                        OutlinedTextField(
+                            value = settings.user, onValueChange = { settings = settings.copy(user = it) },
+                            label = { Text("Utente") }, leadingIcon = { Icon(Icons.Default.Person, null) },
+                            singleLine = true, shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = settings.password, onValueChange = { settings = settings.copy(password = it) },
+                            label = { Text("Password") }, leadingIcon = { Icon(Icons.Default.Lock, null) },
+                            singleLine = true, shape = MaterialTheme.shapes.medium,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = settings.domain, onValueChange = { settings = settings.copy(domain = it) },
+                            label = { Text("Dominio (facoltativo)") }, leadingIcon = { Icon(Icons.Default.Domain, null) },
+                            singleLine = true, shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(
+                            Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)
+                                .clickable { settings = settings.copy(rememberPassword = !settings.rememberPassword) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Ricorda password", Modifier.weight(1f))
+                            Switch(settings.rememberPassword, { settings = settings.copy(rememberPassword = it) })
+                        }
+                    }
+
                     Button(
                         enabled = !busy && settings.host.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
                         onClick = {
                             run {
                                 repo.connect(settings)
@@ -205,113 +284,150 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
                                 step = Step.SHARES
                             }
                         }
-                    ) { Text("Connetti") }
+                    ) {
+                        Icon(Icons.Default.Link, null); Spacer(Modifier.width(8.dp)); Text("Connetti")
+                    }
                 }
 
                 // ---------- 2. Scelta cartella condivisa ----------
-                Step.SHARES -> Column(Modifier.fillMaxSize()) {
+                Step.SHARES -> Column(Modifier.fillMaxSize().padding(vertical = 8.dp)) {
                     if (shares.isEmpty()) {
-                        Text("Impossibile leggere l'elenco delle condivisioni. Scrivi il nome della cartella condivisa:")
+                        Text(
+                            "Non riesco a leggere l'elenco delle condivisioni: scrivi il nome della cartella condivisa.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    } else {
+                        Text("Scegli dove archiviare", style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
                     }
-                    LazyColumn(Modifier.weight(1f)) {
+                    ListCard(Modifier.weight(1f, fill = false)) {
                         items(shares) { name ->
-                            ListItem(
-                                headlineContent = { Text(name) },
-                                leadingContent = { Icon(Icons.Default.FolderShared, null) },
-                                modifier = Modifier.clickable(enabled = !busy) { openShare(name) }
-                            )
-                            HorizontalDivider()
+                            EntryRow(
+                                icon = Icons.Default.FolderShared, iconTint = MaterialTheme.colorScheme.primary,
+                                title = name, subtitle = null, enabled = !busy, chevron = true
+                            ) { openShare(name) }
                         }
                     }
+                    Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
                             value = manualShare, onValueChange = { manualShare = it },
                             label = { Text("Nome condivisione") }, singleLine = true,
+                            shape = MaterialTheme.shapes.medium,
                             modifier = Modifier.weight(1f)
                         )
                         Spacer(Modifier.width(8.dp))
-                        Button(enabled = !busy && manualShare.isNotBlank(), onClick = { openShare(manualShare.trim()) }) {
-                            Text("Apri")
-                        }
+                        FilledTonalButton(
+                            enabled = !busy && manualShare.isNotBlank(),
+                            onClick = { openShare(manualShare.trim()) },
+                            modifier = Modifier.height(56.dp)
+                        ) { Text("Apri") }
                     }
                 }
 
                 // ---------- 3. Scelta sottocartella + nome zip ----------
                 Step.FOLDER -> Column(Modifier.fillMaxSize()) {
-                    Row {
-                        TextButton(
+                    Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AssistChip(
                             enabled = !busy,
                             onClick = {
                                 if (path.isEmpty()) step = Step.SHARES
                                 else { path = SmbRepository.parentOf(path); refresh() }
-                            }
-                        ) {
-                            Icon(Icons.Default.ArrowUpward, null); Spacer(Modifier.width(4.dp)); Text("Su")
-                        }
+                            },
+                            label = { Text("Indietro") },
+                            leadingIcon = { Icon(Icons.Default.ArrowUpward, null, Modifier.size(18.dp)) }
+                        )
                         Spacer(Modifier.weight(1f))
-                        TextButton(enabled = !busy, onClick = { showNewFolder = true }) {
-                            Icon(Icons.Default.CreateNewFolder, null); Spacer(Modifier.width(4.dp)); Text("Nuova cartella")
-                        }
+                        AssistChip(
+                            enabled = !busy,
+                            onClick = { showNewFolder = true },
+                            label = { Text("Nuova cartella") },
+                            leadingIcon = { Icon(Icons.Default.CreateNewFolder, null, Modifier.size(18.dp)) }
+                        )
                     }
-                    LazyColumn(Modifier.weight(1f)) {
+                    ListCard(Modifier.weight(1f)) {
                         if (entries.isEmpty() && !busy) {
-                            item { Text("(cartella vuota)", Modifier.padding(16.dp)) }
+                            item {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(Icons.Default.FolderOpen, null, Modifier.size(40.dp),
+                                        tint = MaterialTheme.colorScheme.outline)
+                                    Text("Cartella vuota", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
                         }
                         items(entries) { e ->
-                            val info: (@Composable () -> Unit)? = if (e.isDir) null else {
-                                {
-                                    Text(
-                                        Formatter.formatShortFileSize(context, e.size) + " · " +
-                                            SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.ITALY).format(Date(e.modified))
-                                    )
-                                }
-                            }
-                            ListItem(
-                                headlineContent = { Text(e.name) },
-                                supportingContent = info,
-                                leadingContent = {
-                                    Icon(
-                                        when {
-                                            e.isDir -> Icons.Default.Folder
-                                            e.name.endsWith(".zip", true) -> Icons.Default.FolderZip
-                                            else -> Icons.AutoMirrored.Filled.InsertDriveFile
-                                        }, null
-                                    )
+                            val isZip = e.name.endsWith(".zip", true)
+                            EntryRow(
+                                icon = when {
+                                    e.isDir -> Icons.Default.Folder
+                                    isZip -> Icons.Default.FolderZip
+                                    else -> Icons.AutoMirrored.Filled.InsertDriveFile
                                 },
-                                modifier = Modifier.clickable(enabled = !busy) {
-                                    if (e.isDir) { path = SmbRepository.join(path, e.name); refresh() }
-                                    else overwriteAsk = e.name   // tocca un file per sovrascriverlo
-                                }
-                            )
-                            HorizontalDivider()
+                                iconTint = when {
+                                    e.isDir -> BrandAmber
+                                    isZip -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.outline
+                                },
+                                title = e.name,
+                                subtitle = if (e.isDir) null else
+                                    Formatter.formatShortFileSize(context, e.size) + " · " +
+                                        SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.ITALY).format(Date(e.modified)),
+                                enabled = !busy,
+                                chevron = e.isDir
+                            ) {
+                                if (e.isDir) { path = SmbRepository.join(path, e.name); refresh() }
+                                else overwriteAsk = e.name   // tocca un file per sovrascriverlo
+                            }
                         }
                     }
 
-                    Text(
-                        "Tocca un file per sovrascriverlo, oppure scrivi un nuovo nome:",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-                    OutlinedTextField(
-                        value = fileBase, onValueChange = { fileBase = it },
-                        label = { Text("Nome file") }, singleLine = true,
-                        prefix = { Text("${datePrefix}_") },
-                        suffix = { Text(".zip") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    progress?.let {
-                        LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-                    }
-                    Button(
-                        enabled = !busy && ZipUtil.sanitizeName(fileBase).isNotEmpty() && session.photos.isNotEmpty(),
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        onClick = {
-                            val name = "${datePrefix}_${ZipUtil.sanitizeName(fileBase)}.zip"
-                            val exists = entries.any { !it.isDir && it.name.equals(name, ignoreCase = true) }
-                            if (exists) overwriteAsk = name
-                            else { pendingName = name; pendingOverwrite = false; askVoice = true }
+                    // Pannello di salvataggio
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                        shadowElevation = 8.dp,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                    ) {
+                        Column(Modifier.navigationBarsPadding().imePadding().padding(16.dp)) {
+                            Text(
+                                "Tocca un file per sovrascriverlo, oppure scrivi un nuovo nome",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            OutlinedTextField(
+                                value = fileBase, onValueChange = { fileBase = it },
+                                label = { Text("Nome file") }, singleLine = true,
+                                shape = MaterialTheme.shapes.medium,
+                                prefix = { Text("${datePrefix}_", color = MaterialTheme.colorScheme.primary) },
+                                suffix = { Text(".zip") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            progress?.let {
+                                LinearProgressIndicator(
+                                    progress = { it },
+                                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(6.dp).clip(CircleShape)
+                                )
+                            }
+                            Button(
+                                enabled = !busy && ZipUtil.sanitizeName(fileBase).isNotEmpty() && photoCount > 0,
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(56.dp),
+                                onClick = {
+                                    val name = "${datePrefix}_${ZipUtil.sanitizeName(fileBase)}.zip"
+                                    val exists = entries.any { !it.isDir && it.name.equals(name, ignoreCase = true) }
+                                    if (exists) overwriteAsk = name
+                                    else { pendingName = name; pendingOverwrite = false; askVoice = true }
+                                }
+                            ) {
+                                Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp))
+                                Text("Salva $photoCount foto qui")
+                            }
                         }
-                    ) { Text("Salva qui") }
+                    }
                 }
             }
         }
@@ -455,5 +571,83 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
             text = { Text(msg) },
             confirmButton = { Button(onClick = { success = null; onDone() }) { Text("Nuova sessione") } }
         )
+    }
+}
+
+
+private val stepLabels = listOf("Computer", "Condivisione", "Destinazione")
+
+@Composable
+private fun StepIndicator(current: Int, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        stepLabels.forEachIndexed { i, label ->
+            Column(Modifier.weight(1f)) {
+                Box(
+                    Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)
+                        .background(
+                            if (i <= current) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                )
+                Text(
+                    label, style = MaterialTheme.typography.labelSmall,
+                    color = if (i == current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ListCard(modifier: Modifier = Modifier, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        LazyColumn(contentPadding = PaddingValues(vertical = 6.dp), content = content)
+    }
+}
+
+@Composable
+private fun EntryRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconTint: androidx.compose.ui.graphics.Color,
+    title: String,
+    subtitle: String?,
+    enabled: Boolean,
+    chevron: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(iconTint.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
+        ) { Icon(icon, null, tint = iconTint) }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            subtitle?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (chevron) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline)
     }
 }
