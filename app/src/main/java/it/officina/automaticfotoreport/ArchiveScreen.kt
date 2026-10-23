@@ -59,6 +59,7 @@ private enum class Step { CONNECT, SHARES, FOLDER }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit) {
+    var cancelAllAsk by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repo = remember { SmbRepository() }
@@ -178,6 +179,13 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Torna alla fotocamera")
                         }
+                    },
+                    actions = {
+                        TextButton(
+                            enabled = !busy,
+                            onClick = { cancelAllAsk = true },
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) { Text("Annulla") }
                     }
                 )
                 StepIndicator(step.ordinal, Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
@@ -457,6 +465,21 @@ fun ArchiveScreen(session: PhotoSession, onBack: () -> Unit, onDone: () -> Unit)
             success = "$n foto" + (if (voice != null) " e messaggio vocale" else "") +
                 " salvate in\n\\\\${settings.host}\\$currentShare\\$remote"
         }
+    }
+
+    if (cancelAllAsk) {
+        AlertDialog(
+            onDismissRequest = { cancelAllAsk = false },
+            title = { Text("Annullare l'operazione?") },
+            text = { Text("Verranno cancellate tutte le ${session.photos.size} foto scattate in questa sessione. Non sarà archiviato nulla.") },
+            confirmButton = {
+                Button(
+                    onClick = { cancelAllAsk = false; session.clear(); onDone() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Cancella tutto") }
+            },
+            dismissButton = { TextButton(onClick = { cancelAllAsk = false }) { Text("No, continua") } }
+        )
     }
 
     overwriteAsk?.let { name ->

@@ -23,6 +23,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -33,7 +35,9 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
@@ -47,7 +51,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -58,6 +64,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CameraScreen(
     session: PhotoSession,
@@ -97,8 +104,11 @@ fun CameraScreen(
     var capturing by remember { mutableStateOf(false) }
     var showChoice by remember { mutableStateOf(false) }
     var flash by remember { mutableStateOf(false) }
+    var deleteLastAsk by remember { mutableStateOf(false) }
+    var cancelAllAsk by remember { mutableStateOf(false) }
 
     // Miniatura dell'ultima foto
+    val haptic = LocalHapticFeedback.current
     val lastPhoto = session.photos.lastOrNull()
     var thumb by remember { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(lastPhoto) { thumb = lastPhoto?.let { loadThumb(it) } }
@@ -169,6 +179,21 @@ fun CameraScreen(
                 Text("Automatic Foto Report", color = Color.White, style = MaterialTheme.typography.titleMedium)
                 Text(user.name, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
             }
+            if (session.photos.isNotEmpty()) {
+                Row(
+                    Modifier
+                        .padding(end = 8.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFBA1A1A).copy(alpha = 0.85f))
+                        .clickable(enabled = !capturing) { cancelAllAsk = true }
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Close, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Annulla", color = Color.White, fontWeight = FontWeight.SemiBold)
+                }
+            }
             CounterPill(session.photos.size)
             Box {
                 var menu by remember { mutableStateOf(false) }
@@ -215,7 +240,21 @@ fun CameraScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 // Miniatura ultima foto
-                Box(Modifier.size(60.dp)) {
+                Box(
+                    Modifier
+                        .size(60.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .combinedClickable(
+                            enabled = session.photos.isNotEmpty() && !capturing,
+                            onClick = {
+                                Toast.makeText(context, "Tieni premuto per cancellare l'ultima foto", Toast.LENGTH_SHORT).show()
+                            },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                deleteLastAsk = true
+                            }
+                        )
+                ) {
                     val t = thumb
                     if (t != null) {
                         Image(
@@ -260,6 +299,50 @@ fun CameraScreen(
         }
     }
 
+    // ---------- Cancella ultima foto (pressione lunga sulla miniatura) ----------
+    if (deleteLastAsk) {
+        AlertDialog(
+            onDismissRequest = { deleteLastAsk = false },
+            icon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Cancellare l'ultima foto?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    thumb?.let {
+                        Image(
+                            it.asImageBitmap(), null, contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(16.dp))
+                        )
+                    }
+                    Text("La foto ${session.photos.size} verrà eliminata. Le altre foto restano.")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { session.removeLast(); deleteLastAsk = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Cancella foto") }
+            },
+            dismissButton = { TextButton(onClick = { deleteLastAsk = false }) { Text("No") } }
+        )
+    }
+
+    // ---------- Annulla tutta l'operazione ----------
+    if (cancelAllAsk) {
+        AlertDialog(
+            onDismissRequest = { cancelAllAsk = false },
+            icon = { Icon(Icons.Filled.DeleteSweep, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Annullare l'operazione?") },
+            text = { Text("Verranno cancellate tutte le ${session.photos.size} foto scattate in questa sessione. Non sarà archiviato nulla.") },
+            confirmButton = {
+                Button(
+                    onClick = { session.clear(); cancelAllAsk = false; showChoice = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Cancella tutto") }
+            },
+            dismissButton = { TextButton(onClick = { cancelAllAsk = false }) { Text("No, continua") } }
+        )
+    }
+
     // ---------- Scelta dopo lo scatto ----------
     if (showChoice) {
         AlertDialog(
@@ -297,6 +380,15 @@ fun CameraScreen(
                         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                     ) {
                         Icon(Icons.Filled.Delete, null); Spacer(Modifier.width(6.dp)); Text("Scarta questa foto")
+                    }
+                    if (session.photos.size > 1) {
+                        TextButton(
+                            onClick = { showChoice = false; cancelAllAsk = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Icon(Icons.Filled.DeleteSweep, null); Spacer(Modifier.width(6.dp)); Text("Annulla tutto")
+                        }
                     }
                 }
             },
